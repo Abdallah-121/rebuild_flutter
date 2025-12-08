@@ -5,14 +5,14 @@ import 'package:rebuild/Model/CategoryMode.dart';
 import 'package:rebuild/Model/report_request.dart';
 
 class ReportService {
-  static const String baseUrl = "http://216.126.239.86:5000/api";
+  static const String baseUrl = "";
   final AuthService authService;
 
   ReportService({required this.authService});
 
   /// GET CATEGORIES (لا تحتاج توكن)
   Future<List<Category>> getCategories() async {
-    final url = Uri.parse("$baseUrl/Category");
+    final url = Uri.parse("");
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
@@ -26,7 +26,7 @@ class ReportService {
   /// GET REPORT LIKE USER IDS
 Future<List<int>> getReportLikeUserIds(int reportId) async {
   final token = await authService.getToken();
-  final url = Uri.parse("$baseUrl/Report/$reportId/likes");
+  final url = Uri.parse("");
 
   final response = await http.get(
     url,
@@ -48,7 +48,7 @@ Future<List<int>> getReportLikeUserIds(int reportId) async {
   /// تحديث حالة البلاغ
   Future<bool> updateReportStatus(int reportId, String status) async {
     final token = await authService.getToken();
-    final url = Uri.parse("$baseUrl/Report/$reportId/status");
+    final url = Uri.parse("");
     final response = await http.patch(
       url,
       headers: {
@@ -63,7 +63,7 @@ Future<List<int>> getReportLikeUserIds(int reportId) async {
   /// إنشاء بلاغ مع توكن
   Future<bool> createReportWithToken(ReportRequest request) async {
     final token = await authService.getToken();
-    final url = Uri.parse("$baseUrl/Report");
+    final url = Uri.parse("");
 
     final response = await http.post(
       url,
@@ -80,7 +80,7 @@ Future<List<int>> getReportLikeUserIds(int reportId) async {
   /// GET ALL REPORTS
   Future<List<Map<String, dynamic>>> getAllReports() async {
     final token = await authService.getToken();
-    final url = Uri.parse("$baseUrl/Report/all");
+    final url = Uri.parse("$/Report/all");
     final response = await http.get(
       url,
       headers: {
@@ -100,7 +100,7 @@ Future<List<int>> getReportLikeUserIds(int reportId) async {
   /// GET SINGLE REPORT BY ID
   Future<Map<String, dynamic>> getReportById(int reportId) async {
     final token = await authService.getToken();
-    final url = Uri.parse("$baseUrl/Report/$reportId");
+    final url = Uri.parse("$/Report/$reportId");
     final response = await http.get(
       url,
       headers: {
@@ -113,7 +113,7 @@ Future<List<int>> getReportLikeUserIds(int reportId) async {
       final Map<String, dynamic> report = jsonDecode(response.body);
 
       // جلب الصور
-      final imagesUrl = Uri.parse("$baseUrl/ReportImage");
+      final imagesUrl = Uri.parse("$/ReportImage");
       final imagesResponse = await http.get(
         imagesUrl,
         headers: {

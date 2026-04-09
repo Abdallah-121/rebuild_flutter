@@ -43,22 +43,42 @@ class AuthCubit extends Cubit<AuthState> {
 
   /// تحديث التوكن قبل انتهاء الصلاحية
   Future<bool> refreshTokenIfNeeded() async {
-    final expires = state.expiresOn;
+    final prefs = await SharedPreferences.getInstance();
 
-    // لو expiry غير موجود → منعتبره يحتاج تحديث
-    if (expires == null) {
+    final storedToken = prefs.getString('auth_token');
+    if (storedToken == null || storedToken.isEmpty) return false;
+
+    final expires = state.expiresOn ?? prefs.getString('expires_on');
+    final expiresTime = expires == null ? null : DateTime.tryParse(expires);
+
+    // لو ما قدرنا نفهم تاريخ الانتهاء، نرجع لصلاحية الـ JWT نفسه.
+    if (expiresTime == null) {
+      if (!service.isTokenExpired(storedToken)) {
+        _syncStateFromStorage(prefs);
+        return true;
+      }
       return await _refreshAndUpdateState();
     }
 
-    final expiresTime = DateTime.tryParse(expires);
-
-    if (expiresTime == null || expiresTime.isBefore(DateTime.now())) {
-      // انتهت الصلاحية → نجدد
-      return await _refreshAndUpdateState();
+    if (expiresTime.isAfter(DateTime.now())) {
+      _syncStateFromStorage(prefs);
+      return true;
     }
 
-    // صالح → لا داعي للتحديث
-    return true;
+    // انتهت الصلاحية → نجدد
+    return await _refreshAndUpdateState();
+  }
+
+
+  void _syncStateFromStorage(SharedPreferences prefs) {
+    emit(
+      state.copyWith(
+        isAuthenticated: true,
+        token: prefs.getString('auth_token'),
+        refreshToken: prefs.getString('refresh_token'),
+        expiresOn: prefs.getString('expires_on'),
+      ),
+    );
   }
 
   Future<bool> _refreshAndUpdateState() async {

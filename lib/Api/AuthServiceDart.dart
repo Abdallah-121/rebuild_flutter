@@ -234,29 +234,45 @@ class AuthService {
   // --------------------- API: Refresh Token ---------------------
   Future<bool> refreshAuthToken() async {
     final refreshToken = await _getStoredRefreshToken();
+    final token = await getTokenRaw();
     if (refreshToken.isEmpty) return false;
 
     final url = Uri.parse("$baseUrl/api/Auth/refresh-token");
+    final payload = {
+      "refreshToken": refreshToken,
+      if (token.isNotEmpty) "token": token,
+      if (token.isNotEmpty) "accessToken": token,
+    };
+
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"refreshToken": refreshToken}),
+      body: jsonEncode(payload),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      if (data['token'] != null &&
-          data['refreshToken'] != null &&
-          data['expiresOn'] != null) {
+
+      final newToken = (data['token'] ?? data['accessToken'] ?? '').toString();
+      final newRefreshToken =
+          (data['refreshToken'] ?? data['newRefreshToken'] ?? '').toString();
+      final newExpiresOn =
+          (data['expiresOn'] ?? data['expiration'] ?? '').toString();
+
+      if (newToken.isNotEmpty &&
+          newRefreshToken.isNotEmpty &&
+          newExpiresOn.isNotEmpty) {
         await saveAuthData(
-          token: data['token'],
-          refreshToken: data['refreshToken'],
-          expiresOn: data['expiresOn'],
+          token: newToken,
+          refreshToken: newRefreshToken,
+          expiresOn: newExpiresOn,
         );
         return true;
       }
-    } else {
-      // لو السيرفر قال الريفريش توكن باطل → نمسح الجلسة
+    }
+
+    // نمسح الجلسة فقط لو السيرفر رفض بشكل صريح (Unauthorized/Forbidden)
+    if (response.statusCode == 401 || response.statusCode == 403) {
       await clearAuthData();
     }
 
@@ -268,6 +284,16 @@ class AuthService {
   Future<String> getTokenRaw() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyToken) ?? '';
+  }
+
+
+  bool isTokenExpired(String token) {
+    if (token.isEmpty) return true;
+    try {
+      return JwtDecoder.isExpired(token);
+    } catch (_) {
+      return true;
+    }
   }
 
   /// جلب التوكن (مع تجديد تلقائي إذا انتهت صلاحيته)
@@ -282,7 +308,7 @@ class AuthService {
     final refreshed = await refreshAuthToken();
     if (!refreshed) return '';
 
-    return prefs.getString(_keyToken) ?? '';
+    return (await SharedPreferences.getInstance()).getString(_keyToken) ?? '';
   }
 
   Future<int> getUserIdFromToken() async {

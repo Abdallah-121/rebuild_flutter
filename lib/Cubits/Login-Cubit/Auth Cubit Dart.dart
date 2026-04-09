@@ -4,17 +4,38 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'Auth State Dart.dart';
 import '../../Api/AuthServiceDart.dart';
+import '../../features/auth/data/repositories/auth_repository_impl.dart';
+import '../../features/auth/domain/usecases/load_current_user_use_case.dart';
+import '../../features/auth/domain/usecases/login_use_case.dart';
+import '../../features/auth/domain/usecases/logout_use_case.dart';
+import '../../features/auth/domain/usecases/refresh_token_if_needed_use_case.dart';
+import '../../features/auth/domain/usecases/sign_up_use_case.dart';
 
 class AuthCubit extends Cubit<AuthState> {
-  final AuthService service;
-  AuthCubit(this.service) : super(const AuthState());
+  final LoginUseCase _loginUseCase;
+  final SignUpUseCase _signUpUseCase;
+  final RefreshTokenIfNeededUseCase _refreshTokenIfNeededUseCase;
+  final LoadCurrentUserUseCase _loadCurrentUserUseCase;
+  final LogoutUseCase _logoutUseCase;
+
+  AuthCubit(AuthService service)
+    : _loginUseCase = LoginUseCase(AuthRepositoryImpl(service)),
+      _signUpUseCase = SignUpUseCase(AuthRepositoryImpl(service)),
+      _refreshTokenIfNeededUseCase = RefreshTokenIfNeededUseCase(
+        AuthRepositoryImpl(service),
+      ),
+      _loadCurrentUserUseCase = LoadCurrentUserUseCase(
+        AuthRepositoryImpl(service),
+      ),
+      _logoutUseCase = LogoutUseCase(AuthRepositoryImpl(service)),
+      super(const AuthState());
 
   /// تسجيل الدخول
   Future<void> login(String email, String password) async {
     emit(state.copyWith(isLoading: true, error: null));
 
     try {
-      final data = await service.login(email: email, password: password);
+      final data = await _loginUseCase(email: email, password: password);
 
       final user = data['user'];
       final userData = {
@@ -43,43 +64,16 @@ class AuthCubit extends Cubit<AuthState> {
 
   /// تحديث التوكن قبل انتهاء الصلاحية
   Future<bool> refreshTokenIfNeeded() async {
-    final expires = state.expiresOn;
+    final session = await _refreshTokenIfNeededUseCase();
+    if (session == null) return false;
 
-    // لو expiry غير موجود → منعتبره يحتاج تحديث
-    if (expires == null) {
-      return await _refreshAndUpdateState();
-    }
-
-    final expiresTime = DateTime.tryParse(expires);
-
-    if (expiresTime == null || expiresTime.isBefore(DateTime.now())) {
-      // انتهت الصلاحية → نجدد
-      return await _refreshAndUpdateState();
-    }
-
-    // صالح → لا داعي للتحديث
-    return true;
-  }
-
-  Future<bool> _refreshAndUpdateState() async {
-    final success = await service.refreshAuthToken();
-    if (!success) return false;
-
-    final prefs = await SharedPreferences.getInstance();
-
-    final newToken = prefs.getString('auth_token');
-    final newRefresh = prefs.getString('refresh_token');
-    final newExpires = prefs.getString('expires_on');
-
-    // تحديث الحالة
     emit(
       state.copyWith(
-        token: newToken,
-        refreshToken: newRefresh,
-        expiresOn: newExpires,
+        token: session.token,
+        refreshToken: session.refreshToken,
+        expiresOn: session.expiresOn,
       ),
     );
-
     return true;
   }
 
@@ -95,7 +89,7 @@ class AuthCubit extends Cubit<AuthState> {
     emit(state.copyWith(isLoading: true, error: null, signUpSuccess: false));
 
     try {
-      final success = await service.signUp(
+      final success = await _signUpUseCase(
         firstName: first,
         lastName: last,
         email: email,
@@ -112,7 +106,7 @@ class AuthCubit extends Cubit<AuthState> {
       emit(state.copyWith(isLoading: false, signUpSuccess: true));
 
       // تسجيل الدخول تلقائي
-      final data = await service.login(email: email, password: password);
+      final data = await _loginUseCase(email: email, password: password);
 
       final user = data['user'];
       final userData = {
@@ -141,7 +135,7 @@ class AuthCubit extends Cubit<AuthState> {
   /// تحميل بيانات المستخدم عند فتح التطبيق
   Future<void> loadCurrentUser() async {
     try {
-      final user = await service.getCurrentUserFull();
+      final user = await _loadCurrentUserUseCase();
       if (user != null) {
         emit(
           state.copyWith(
@@ -161,10 +155,9 @@ class AuthCubit extends Cubit<AuthState> {
 
   /// تسجيل الخروج
   Future<void> logout() async {
+    await _logoutUseCase();
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    await prefs.remove('refresh_token');
-    await prefs.remove('expires_on');
     await prefs.remove('remember_me');
     await prefs.remove('user_role');
 

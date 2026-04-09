@@ -134,6 +134,15 @@ class AuthService {
     return prefs.getString(_keyExpiresOn) ?? '';
   }
 
+  Future<Map<String, String?>> getStoredAuthData() async {
+    final prefs = await SharedPreferences.getInstance();
+    return {
+      'token': prefs.getString(_keyToken),
+      'refreshToken': prefs.getString(_keyRefreshToken),
+      'expiresOn': prefs.getString(_keyExpiresOn),
+    };
+  }
+
   // --------------------- API: Cities ---------------------
   Future<List<City>> getCities() async {
     final response = await http.get(Uri.parse("$baseUrl/api/City"));
@@ -233,6 +242,7 @@ class AuthService {
 
   // --------------------- API: Refresh Token ---------------------
   Future<bool> refreshAuthToken() async {
+    final token = await getTokenRaw();
     final refreshToken = await _getStoredRefreshToken();
     if (refreshToken.isEmpty) return false;
 
@@ -240,22 +250,30 @@ class AuthService {
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"refreshToken": refreshToken}),
+      body: jsonEncode({
+        "refreshToken": refreshToken,
+        "RefreshToken": refreshToken,
+        if (token.isNotEmpty) "token": token,
+        if (token.isNotEmpty) "Token": token,
+      }),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      if (data['token'] != null &&
-          data['refreshToken'] != null &&
-          data['expiresOn'] != null) {
+      final newToken = data['token'] ?? data['accessToken'] ?? data['Token'];
+      final newRefresh =
+          data['refreshToken'] ?? data['RefreshToken'] ?? data['refresh_token'];
+      final newExpires = data['expiresOn'] ?? data['expires'] ?? data['ExpiresOn'];
+
+      if (newToken != null && newRefresh != null && newExpires != null) {
         await saveAuthData(
-          token: data['token'],
-          refreshToken: data['refreshToken'],
-          expiresOn: data['expiresOn'],
+          token: newToken.toString(),
+          refreshToken: newRefresh.toString(),
+          expiresOn: newExpires.toString(),
         );
         return true;
       }
-    } else {
+    } else if (response.statusCode == 400 || response.statusCode == 401) {
       // لو السيرفر قال الريفريش توكن باطل → نمسح الجلسة
       await clearAuthData();
     }
